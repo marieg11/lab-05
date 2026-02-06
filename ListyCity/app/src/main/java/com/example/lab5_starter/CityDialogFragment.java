@@ -17,8 +17,12 @@ public class CityDialogFragment extends DialogFragment {
     interface CityDialogListener {
         void updateCity(City city, String title, String year);
         void addCity(City city);
+        void deleteCity(City city);
     }
     private CityDialogListener listener;
+
+    private City selectedCity;
+
 
     public static CityDialogFragment newInstance(City city){
         Bundle args = new Bundle();
@@ -54,16 +58,25 @@ public class CityDialogFragment extends DialogFragment {
         if (Objects.equals(tag, "City Details") && bundle != null){
             city = (City) bundle.getSerializable("City");
             assert city != null;
+            selectedCity = city;
             editMovieName.setText(city.getName());
             editMovieYear.setText(city.getProvince());
         }
         else {
             city = null;}
 
+
         AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
         return builder
                 .setView(view)
                 .setTitle("City Details")
+                //Delete button
+                .setNeutralButton("Delete", (dialog, which) -> {
+                    if (selectedCity != null) {
+                        listener.deleteCity(selectedCity);
+                    }
+                })
+
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Continue", (dialog, which) -> {
                     String title = editMovieName.getText().toString();
