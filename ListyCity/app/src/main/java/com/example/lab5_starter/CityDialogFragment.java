@@ -1,92 +1,138 @@
 package com.example.lab5_starter;
 
-import android.app.AlertDialog;
-import android.app.Dialog;
-import android.content.Context;
 import android.os.Bundle;
-import android.view.View;
-import android.widget.EditText;
+import android.util.Log;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.ListView;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import androidx.fragment.app.DialogFragment;
+import androidx.activity.EdgeToEdge;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
-import java.util.Objects;
+import com.google.firebase.firestore.CollectionReference;
+import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.FirebaseFirestoreException;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+import com.google.firebase.firestore.QuerySnapshot;
 
-public class CityDialogFragment extends DialogFragment {
-    interface CityDialogListener {
-        void updateCity(City city, String title, String year);
-        void addCity(City city);
-        void deleteCity(City city);
-    }
-    private CityDialogListener listener;
+import java.util.ArrayList;
 
-    private City selectedCity;
+public class MainActivity extends AppCompatActivity implements CityDialogFragment.CityDialogListener {
+
+    private Button addCityButton;
+    private ListView cityListView;
+
+    private ArrayList<City> cityArrayList;
+    private ArrayAdapter<City> cityArrayAdapter;
+
+    private FirebaseFirestore db;
+    private CollectionReference citiesRef;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        EdgeToEdge.enable(this);
+        setContentView(R.layout.activity_main);
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            return insets;
+        });
 
 
-    public static CityDialogFragment newInstance(City city){
-        Bundle args = new Bundle();
-        args.putSerializable("City", city);
+        addCityButton = findViewById(R.id.buttonAddCity);
+        cityListView = findViewById(R.id.listviewCities);
 
-        CityDialogFragment fragment = new CityDialogFragment();
-        fragment.setArguments(args);
-        return fragment;
+
+        cityArrayList = new ArrayList<>();
+        cityArrayAdapter = new CityArrayAdapter(this, cityArrayList);
+        cityListView.setAdapter(cityArrayAdapter);
+
+        addDummyData();
+        db = FirebaseFirestore.getInstance();
+        citiesRef = db.collection("cities");
+
+        citiesRef.addSnapshotListener((QuerySnapshot value, FirebaseFirestoreException error) -> {
+            if (error != null) {
+                Log.e("Firestore", error.toString());
+                return;
+            }
+
+
+            if (value == null || value.isEmpty()) {
+                cityArrayList.clear();
+                cityArrayAdapter.notifyDataSetChanged();
+                return;
+            }
+
+            cityArrayList.clear();
+            for (QueryDocumentSnapshot snapshot : value) {
+                String name = snapshot.getString("name");
+                String province = snapshot.getString("province");
+
+                // Only add if fields exist
+                if (name != null && province != null) {
+                    cityArrayList.add(new City(name, province));
+                }
+            }
+            cityArrayAdapter.notifyDataSetChanged();
+        });
+
+
+        addCityButton.setOnClickListener(view -> {
+            CityDialogFragment cityDialogFragment = new CityDialogFragment();
+            cityDialogFragment.show(getSupportFragmentManager(),"Add City");
+        });
+
+        cityListView.setOnItemClickListener((adapterView, view, i, l) -> {
+            City city = cityArrayAdapter.getItem(i);
+            CityDialogFragment cityDialogFragment = CityDialogFragment.newInstance(city);
+            cityDialogFragment.show(getSupportFragmentManager(),"City Details");
+        });
+
     }
 
     @Override
-    public void onAttach(@NonNull Context context) {
-        super.onAttach(context);
-        if (context instanceof CityDialogListener){
-            listener = (CityDialogListener) context;
-        }
-        else {
-            throw new RuntimeException("Implement listener");
-        }
+    public void updateCity(City city, String title, String year) {
+        city.setName(title);
+        city.setProvince(year);
+        cityArrayAdapter.notifyDataSetChanged();
+
+
     }
 
-    @NonNull
     @Override
-    public Dialog onCreateDialog(@Nullable Bundle savedInstanceState) {
-        View view = getLayoutInflater().inflate(R.layout.fragment_city_details, null);
-        EditText editMovieName = view.findViewById(R.id.edit_city_name);
-        EditText editMovieYear = view.findViewById(R.id.edit_province);
+    public void addCity(City city){
+        cityArrayList.add(city);
+        cityArrayAdapter.notifyDataSetChanged();
 
-        String tag = getTag();
-        Bundle bundle = getArguments();
-        City city;
 
-        if (Objects.equals(tag, "City Details") && bundle != null){
-            city = (City) bundle.getSerializable("City");
-            assert city != null;
-            selectedCity = city;
-            editMovieName.setText(city.getName());
-            editMovieYear.setText(city.getProvince());
+        if (citiesRef != null) {
+            DocumentReference docRef = citiesRef.document(city.getName());
+            docRef.set(city);
         }
-        else {
-            city = null;}
+
+    }
+
+    // Delete cities from the ListView (delete button when city is clicked)
+    public void deleteCity(City city) {
+
+        cityArrayList.remove(city);
+        cityArrayAdapter.notifyDataSetChanged();
+
+        citiesRef.document(city.getName()).delete();
+    }
 
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
-        return builder
-                .setView(view)
-                .setTitle("City Details")
-                //Delete button
-                .setNeutralButton("Delete", (dialog, which) -> {
-                    if (selectedCity != null) {
-                        listener.deleteCity(selectedCity);
-                    }
-                })
-
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Continue", (dialog, which) -> {
-                    String title = editMovieName.getText().toString();
-                    String year = editMovieYear.getText().toString();
-                    if (Objects.equals(tag, "City Details")) {
-                        listener.updateCity(city, title, year);
-                    } else {
-                        listener.addCity(new City(title, year));
-                    }
-                })
-                .create();
+    public void addDummyData(){
+        City m1 = new City("Edmonton", "AB");
+        City m2 = new City("Vancouver", "BC");
+        cityArrayList.add(m1);
+        cityArrayList.add(m2);
+        cityArrayAdapter.notifyDataSetChanged();
     }
 }
